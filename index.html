@@ -26,6 +26,30 @@
   .kat-stor    { background:#c8e6c9 !important; }
   .kat-middels { background:#ffe0b2 !important; }
   .kat-liten   { background:#ffcdd2 !important; }
+
+  /* Mobilvennlig: skjerm <= 767px */
+  @media (max-width: 767px) {
+    .hero { padding: 16px 16px 14px; margin-bottom: 16px; }
+    .hero h1 { font-size: 1.25rem; }
+    .hero p  { font-size: .8rem; }
+    .kpi { padding: 12px 8px; }
+    .kpi .num { font-size: 1.5rem; }
+    .kpi .lbl { font-size: .75rem; }
+    .card-section { padding: 14px 12px; margin-bottom: 16px; }
+    #kartet { height: 300px; }
+    /* Forhindre iOS-zoom på inputfelter (krever min 16px) */
+    .form-control, .form-control-sm, select, input[type="number"] { font-size: 16px !important; }
+    /* Større touch-mål på kategori-knapper */
+    .btn-sm { min-height: 40px; padding: 6px 14px; font-size: .85rem; }
+  }
+
+  /* Svært smal skjerm: skjul Gnr/Bnr-kolonner i tabellen */
+  @media (max-width: 575px) {
+    #tomteTabell th:nth-child(2),
+    #tomteTabell td:nth-child(2),
+    #tomteTabell th:nth-child(3),
+    #tomteTabell td:nth-child(3) { display: none; }
+  }
 </style>
 </head>
 <body>
@@ -35,7 +59,7 @@
   <p>Arendal kommune (4203) &bull; Kilde: Kartverket / Geonorge &bull; Sist oppdatert 2026-04-01</p>
 </div>
 
-<div class="container-fluid px-4">
+<div class="container-fluid px-2 px-md-4">
 
   <!-- KPI-kort -->
   <div class="row g-3 mb-4">
