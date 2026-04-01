@@ -43,6 +43,22 @@
     .btn-sm { min-height: 40px; padding: 6px 14px; font-size: .85rem; }
   }
 
+  /* Tabellstil */
+  #tomteTabell td, #tomteTabell th { vertical-align: middle; }
+  #tomteTabell th:nth-child(2), #tomteTabell th:nth-child(3),
+  #tomteTabell td:nth-child(2), #tomteTabell td:nth-child(3) { width:56px; text-align:center; }
+  #tomteTabell td:nth-child(4), #tomteTabell th:nth-child(4) { white-space:nowrap; text-align:right; }
+  #tomteTabell td:nth-child(5), #tomteTabell th:nth-child(5) { white-space:nowrap; }
+  /* Visuell indikator for klikkbare rader */
+  #tomteTabell tbody tr[style*="cursor:pointer"]:hover td:first-child {
+    border-left: 3px solid #2d7dd2;
+    padding-left: 10px;
+  }
+  #tomteTabell tbody tr.table-active td:first-child {
+    border-left: 3px solid #1a3c5e;
+    padding-left: 10px;
+  }
+
   /* Svært smal skjerm: skjul Gnr/Bnr-kolonner i tabellen */
   @media (max-width: 575px) {
     #tomteTabell th:nth-child(2),
@@ -138,7 +154,7 @@
     <div id="filterInfo" class="text-muted mb-2" style="font-size:.82rem;"></div>
 
     <div class="table-responsive">
-      <table id="tomteTabell" class="table table-sm table-hover" style="font-size:.85rem;">
+      <table id="tomteTabell" class="table table-hover" style="font-size:.85rem;">
         <thead class="table-dark">
           <tr>
             <th>Adresse</th><th>Gnr</th><th>Bnr</th>
@@ -231,11 +247,11 @@ ROWS.forEach(r => {
          data-lat="${r.Lat ?? ''}" data-lon="${r.Lon ?? ''}"
          data-adresse="${(r.Adresse || '').replace(/"/g,'&quot;')}"
          data-areal-raw="${areal ?? ''}">
-      <td>${hasCoord ? '📍 ' : ''}${r.Adresse || '—'}</td>
+      <td>${r.Adresse || '—'}</td>
       <td>${r.Gardsnummer}</td>
       <td>${r.Bruksnummer}</td>
       <td class="${klass}" data-areal="${areal ?? ''}">${arealVist}</td>
-      <td class="${klass}">${r.Kategori || '—'}</td>
+      <td class="${klass}">${(r.Kategori || '—').split(' ')[0]}</td>
     </tr>`);
 });
 
