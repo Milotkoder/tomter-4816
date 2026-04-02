@@ -27,6 +27,9 @@ jobs:
   book:
     runs-on: self-hosted
     timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - name: Checkout
