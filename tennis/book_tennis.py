@@ -32,16 +32,20 @@ async def login(page, email: str, password: str) -> bool:
     await page.goto(LOGIN_URL, wait_until="domcontentloaded")
     print(f"[{ts()}] Login-side lastet. URL: {page.url}, Tittel: {await page.title()}")
 
-    username_field = await page.query_selector('input[name="j_username"]')
-    if not username_field:
-        print(f"[{ts()}] FEIL: Fant ikke input[name='j_username'] — siden ser kanskje annerledes ut")
+    # Prøv nye selektorer først (ny MATCHi-loginside), fall tilbake til gamle
+    email_sel = 'input[type="email"], input[name="email"], input[name="j_username"]'
+    pass_sel  = 'input[type="password"], input[name="j_password"]'
+
+    email_field = await page.query_selector(email_sel)
+    if not email_field:
+        print(f"[{ts()}] FEIL: Fant ikke e-post-felt — siden ser uforventet ut")
         await page.screenshot(path="debug_login_page.png", full_page=True)
         print(f"[{ts()}] Skjermbilde lagret: debug_login_page.png")
         return False
 
-    await page.fill('input[name="j_username"]', email)
-    await page.fill('input[name="j_password"]', password)
-    await page.click('button[type="submit"], input[type="submit"]')
+    await page.fill(email_sel, email)
+    await page.fill(pass_sel, password)
+    await page.click('button[type="submit"], input[type="submit"], button:has-text("Log in"), button:has-text("Logg inn")')
     try:
         await page.wait_for_url(lambda url: "login" not in url, timeout=10_000)
         print(f"[{ts()}] Innlogget OK")

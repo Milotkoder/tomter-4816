@@ -3,5 +3,5 @@
   "date": "2026-04-03",
   "times": ["19:00", "20:00"],
   "midnight": false,
-  "note": "Debug-run med screenshot. Sett active=true for å trigge booking. midnight=true for midnatt-modus."
+  "note": "Oppdatert login-selektorer for ny MATCHi-side. Sett active=true for å trigge booking."
 }
