@@ -3,5 +3,5 @@
   "date": "2026-04-03",
   "times": ["19:00", "20:00"],
   "midnight": false,
-  "note": "Retrigger etter YAML-fiks. Sett active=true for å trigge booking. midnight=true for midnatt-modus."
+  "note": "Debug-run med screenshot. Sett active=true for å trigge booking. midnight=true for midnatt-modus."
 }
