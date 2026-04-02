@@ -36,9 +36,10 @@ async def login(page, email: str, password: str) -> bool:
     email_sel = 'input[type="email"], input[name="email"], input[name="j_username"]'
     pass_sel  = 'input[type="password"], input[name="j_password"]'
 
-    email_field = await page.query_selector(email_sel)
-    if not email_field:
-        print(f"[{ts()}] FEIL: Fant ikke e-post-felt — siden ser uforventet ut")
+    try:
+        await page.wait_for_selector(email_sel, timeout=10_000)
+    except PlaywrightTimeout:
+        print(f"[{ts()}] FEIL: Fant ikke e-post-felt etter 10 sek — siden ser uforventet ut")
         await page.screenshot(path="debug_login_page.png", full_page=True)
         print(f"[{ts()}] Skjermbilde lagret: debug_login_page.png")
         return False

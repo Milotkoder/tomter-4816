@@ -3,5 +3,5 @@
   "date": "2026-04-03",
   "times": ["19:00", "20:00"],
   "midnight": false,
-  "note": "Oppdatert login-selektorer for ny MATCHi-side. Sett active=true for å trigge booking."
+  "note": "Legg til wait_for_selector for React-rendered login. Sett active=true for å trigge booking."
 }
