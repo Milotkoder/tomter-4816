@@ -1,0 +1,6 @@
+{
+  "active": false,
+  "date": "",
+  "times": ["19:00", "20:00"],
+  "note": "Sett active=true og fyll inn date (YYYY-MM-DD) for å aktivere automatisk booking ved midnatt"
+}

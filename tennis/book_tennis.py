@@ -189,13 +189,15 @@ async def book_slot(page, slot: dict) -> bool:
         return False
 
 
-def wait_for_midnight(pre_seconds: float = 0.3):
+def wait_for_midnight(pre_seconds: float = 0.3, max_wait_minutes: int = 10):
     """
     Venter til nøyaktig midnatt minus pre_seconds sekunder,
     deretter returnerer ved midnatt.
 
     pre_seconds = 0.3 betyr at vi trigger 300ms FØR midnatt
     slik at HTTP-requesten ankommer serveren rett ved midnatt.
+
+    max_wait_minutes: avbryt hvis ventetiden er lengre enn dette (sikkerhet for CI)
     """
     now = datetime.now()
     tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -205,6 +207,11 @@ def wait_for_midnight(pre_seconds: float = 0.3):
     if wait_secs < 0:
         print(f"[{ts()}] Allerede passert midnatt, booker umiddelbart.")
         return
+
+    if wait_secs > max_wait_minutes * 60:
+        print(f"[{ts()}] FEIL: {wait_secs/60:.1f} min til midnatt — over grensen på {max_wait_minutes} min.")
+        print(f"[{ts()}] Start scriptet nærmere midnatt, eller øk --max-wait.")
+        sys.exit(1)
 
     print(f"[{ts()}] Venter til {target.strftime('%H:%M:%S.%f')[:-3]} ({wait_secs:.1f} sek)...")
     print(f"[{ts()}] Midnatt er: {tomorrow.strftime('%Y-%m-%d %H:%M:%S')}")
@@ -246,15 +253,18 @@ async def main():
                         help="Kjør uten synlig nettleser (standard: synlig)")
     parser.add_argument("--pre-seconds", type=float, default=0.3,
                         help="Sekunder før midnatt å sende request (standard: 0.3)")
+    parser.add_argument("--max-wait", type=int, default=10,
+                        help="Maks minutter å vente på midnatt (standard: 10, for CI-sikkerhet)")
     args = parser.parse_args()
 
     print(f"[{ts()}] === MATCHi Tennis Booking ===")
     print(f"[{ts()}] Dato: {args.date}")
     print(f"[{ts()}] Ønskede tider: {', '.join(args.times)}")
     print(f"[{ts()}] Modus: {'Sjekk' if args.check_only else 'Midnatt' if args.midnight else 'Umiddelbar'}")
+    print(f"[{ts()}] Tidssone: {datetime.now().astimezone().tzname()}")
 
     if args.midnight:
-        wait_for_midnight(pre_seconds=args.pre_seconds)
+        wait_for_midnight(pre_seconds=args.pre_seconds, max_wait_minutes=args.max_wait)
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=args.headless)
