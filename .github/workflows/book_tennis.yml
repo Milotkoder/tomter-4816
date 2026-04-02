@@ -27,61 +27,50 @@ jobs:
   book:
     runs-on: self-hosted
     timeout-minutes: 15
-    defaults:
-      run:
-        shell: bash
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Install Python dependencies
+        shell: cmd
         run: |
-          cd tennis
-          pip install -r requirements.txt
+          cd tennis && pip install -r requirements.txt
 
       - name: Install Playwright browser
+        shell: cmd
         run: playwright install chromium --with-deps
 
       - name: Book (manuell)
         if: github.event_name == 'workflow_dispatch'
+        shell: cmd
         env:
           MATCHI_EMAIL: ${{ secrets.MATCHI_EMAIL }}
           MATCHI_PASSWORD: ${{ secrets.MATCHI_PASSWORD }}
           TZ: Europe/Oslo
         run: |
-          cd tennis
-          ARGS="--date ${{ github.event.inputs.date }} --times ${{ github.event.inputs.times }} --headless"
-          if [ "${{ github.event.inputs.midnight }}" = "true" ]; then
-            ARGS="$ARGS --midnight --max-wait 10"
-          fi
-          echo "Kjører: python book_tennis.py $ARGS"
-          python book_tennis.py $ARGS
+          cd tennis && python book_tennis.py --date ${{ github.event.inputs.date }} --times ${{ github.event.inputs.times }}${{ github.event.inputs.midnight == 'true' && ' --midnight --max-wait 10' || '' }} --headless
 
       - name: Les next_booking.json
         if: github.event_name == 'push' || github.event_name == 'schedule'
         id: cfg
+        shell: cmd
         run: |
           cd tennis
-          echo "date=$(python3 -c 'import json; d=json.load(open("next_booking.json")); print(d["date"])')" >> $GITHUB_OUTPUT
-          echo "times=$(python3 -c 'import json; d=json.load(open("next_booking.json")); print(" ".join(d["times"]))')" >> $GITHUB_OUTPUT
-          echo "active=$(python3 -c 'import json; d=json.load(open("next_booking.json")); print(d["active"])')" >> $GITHUB_OUTPUT
-          echo "midnight=$(python3 -c 'import json; d=json.load(open("next_booking.json")); print(d.get("midnight",False))')" >> $GITHUB_OUTPUT
+          python -c "import json; d=json.load(open('next_booking.json')); print('date=' + d['date'])" >> %GITHUB_OUTPUT%
+          python -c "import json; d=json.load(open('next_booking.json')); print('times=' + ' '.join(d['times']))" >> %GITHUB_OUTPUT%
+          python -c "import json; d=json.load(open('next_booking.json')); print('active=' + str(d['active']))" >> %GITHUB_OUTPUT%
+          python -c "import json; d=json.load(open('next_booking.json')); print('midnight=' + str(d.get('midnight',False)))" >> %GITHUB_OUTPUT%
 
       - name: Book (push/scheduled)
         if: (github.event_name == 'push' || github.event_name == 'schedule') && steps.cfg.outputs.active == 'True'
+        shell: cmd
         env:
           MATCHI_EMAIL: ${{ secrets.MATCHI_EMAIL }}
           MATCHI_PASSWORD: ${{ secrets.MATCHI_PASSWORD }}
           TZ: Europe/Oslo
         run: |
-          cd tennis
-          ARGS="--date ${{ steps.cfg.outputs.date }} --times ${{ steps.cfg.outputs.times }} --headless"
-          if [ "${{ steps.cfg.outputs.midnight }}" = "True" ]; then
-            ARGS="$ARGS --midnight --max-wait 10"
-          fi
-          echo "Kjører: python book_tennis.py $ARGS"
-          python book_tennis.py $ARGS
+          cd tennis && python book_tennis.py --date ${{ steps.cfg.outputs.date }} --times ${{ steps.cfg.outputs.times }} --headless
 
       - name: Last opp debug-skjermbilder
         if: failure()
@@ -93,10 +82,11 @@ jobs:
 
       - name: Deaktiver booking etter kjøring
         if: (github.event_name == 'push' || github.event_name == 'schedule') && steps.cfg.outputs.active == 'True'
+        shell: cmd
         run: |
-          jq '.active = false' tennis/next_booking.json > tmp.json && mv tmp.json tennis/next_booking.json
+          jq ".active = false" tennis\next_booking.json > tmp.json && move tmp.json tennis\next_booking.json
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
-          git add tennis/next_booking.json
+          git add tennis\next_booking.json
           git commit -m "Deaktiver booking etter kjøring"
           git push
