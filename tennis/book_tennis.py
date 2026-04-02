@@ -111,57 +111,68 @@ async def book_time(page, date: str, preferred_times: list) -> bool:
         target_ms = int(local_dt.timestamp() * 1000)
         print(f"[{ts()}]   Timestamp: {target_ms}")
 
-        # Klikk slot via JS evaluate (elementet kan være utenfor viewport)
-        result = await page.evaluate(f"""() => {{
-            const links = Array.from(document.querySelectorAll('a[href*="/bookingPayment/confirm"]'));
-            const match = links.find(a => {{
-                const m = a.href.match(/[?&]start=(\\d+)/);
-                return m && m[1] === '{target_ms}';
-            }});
-            if (match) {{
-                const href = match.href;
-                match.dispatchEvent(new MouseEvent('click', {{bubbles: true, cancelable: true}}));
-                return href;
+        # Steg 1: Klikk btn-slot for å åpne collapse-panelet
+        slot_btn_clicked = await page.evaluate(f"""() => {{
+            const btn = document.querySelector('button.btn-slot[data-target="#642_{target_ms}"]');
+            if (btn) {{
+                btn.click();
+                return true;
             }}
-            const available = links.map(a => {{
-                const m = a.href.match(/start=(\\d+)/);
-                return m ? m[1] : null;
-            }}).filter(Boolean);
-            return 'INGEN_MATCH. Tilgjengelige: ' + [...new Set(available)].join(', ');
+            return false;
         }}""")
 
-        if not result or result.startswith("INGEN_MATCH"):
-            print(f"[{ts()}]   {result}")
+        if not slot_btn_clicked:
+            available = await page.evaluate("""() => {
+                return Array.from(document.querySelectorAll('button.btn-slot'))
+                    .map(b => b.getAttribute('data-target'))
+                    .filter(Boolean);
+            }""")
+            print(f"[{ts()}]   Fant ikke tidsknapp. Tilgjengelige: {available[:6]}")
             await page.screenshot(path=f"debug_no_time_{preferred_time.replace(':', '')}.png", full_page=True)
             continue
 
-        print(f"[{ts()}]   Klikket slot: {result[:100]}")
-        await page.wait_for_timeout(3000)
+        print(f"[{ts()}]   Klikket tidsknapp, venter på panel...")
+        await page.wait_for_timeout(1000)
 
-        # Lukk cookie-popup igjen hvis den blokkerer modal
-        await dismiss_cookies(page)
+        # Steg 2: Klikk første a.slot.free inne i det åpnede panelet
+        book_clicked = await page.evaluate(f"""() => {{
+            const panel = document.querySelector('#642_{target_ms}');
+            if (!panel) return 'panel ikke funnet';
+            const link = panel.querySelector('a.slot.free');
+            if (!link) return 'ingen ledig bane';
+            link.click();
+            return link.getAttribute('slotid') || 'klikket';
+        }}""")
+
+        if book_clicked in ('panel ikke funnet', 'ingen ledig bane'):
+            print(f"[{ts()}]   {book_clicked}")
+            await page.screenshot(path=f"debug_no_book_{preferred_time.replace(':', '')}.png", full_page=True)
+            continue
+
+        print(f"[{ts()}]   Klikket Book-lenke, slotId: {book_clicked}")
+
+        # Steg 3: Vent på at modal lastes inn via AJAX
+        try:
+            await page.wait_for_selector('#userBookingModal .modal-footer, #userBookingModal button', timeout=10000)
+        except PlaywrightTimeout:
+            await page.screenshot(path=f"debug_no_modal_{preferred_time.replace(':', '')}.png", full_page=True)
+            print(f"[{ts()}]   Modal ble ikke lastet")
+            continue
+
         await page.wait_for_timeout(500)
 
-        # Klikk NESTE via JS for å unngå at cookie-popup blokkerer
+        # Steg 4: Klikk NESTE inne i modalen
         neste_clicked = await page.evaluate("""() => {
-            const buttons = Array.from(document.querySelectorAll('button, a.btn'));
+            const modal = document.querySelector('#userBookingModal');
+            if (!modal) return null;
+            const buttons = Array.from(modal.querySelectorAll('button, a.btn'));
             const neste = buttons.find(b => {
                 const t = (b.innerText || b.textContent || '').trim().toUpperCase();
-                return t === 'NESTE' || t === 'NEXT' || t === 'NASTA' || t === 'NÄSTA';
+                return t === 'NESTE' || t === 'NEXT' || t === 'NASTA';
             });
-            if (neste) {
-                neste.click();
-                return neste.innerText.trim();
-            }
-            // Fallback: btn-primary i modal
-            const modal = document.querySelector('.modal.in, .modal[style*="display: block"], .modal[style*="display:block"]');
-            if (modal) {
-                const primary = modal.querySelector('button.btn-primary, a.btn-primary');
-                if (primary) {
-                    primary.click();
-                    return 'modal-primary: ' + primary.innerText.trim();
-                }
-            }
+            if (neste) { neste.click(); return neste.innerText.trim(); }
+            const primary = modal.querySelector('button.btn-primary, a.btn-primary');
+            if (primary) { primary.click(); return 'primary: ' + primary.innerText.trim(); }
             return null;
         }""")
 
@@ -170,7 +181,7 @@ async def book_time(page, date: str, preferred_times: list) -> bool:
             print(f"[{ts()}]   Fant ikke NESTE-knapp i modal")
             continue
 
-        print(f"[{ts()}]   Klikket NESTE: {neste_clicked}")
+        print(f"[{ts()}]   Klikket: {neste_clicked}")
 
         try:
             await page.wait_for_url(
