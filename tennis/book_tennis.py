@@ -67,6 +67,29 @@ async def login(page, email: str, password: str) -> bool:
         return False
 
 
+async def dismiss_cookies(page):
+    """Lukk cookie-popup hvis den vises."""
+    for sel in [
+        "button:has-text('ALLOW NECESSARY')",
+        "button:has-text('Allow necessary')",
+        "button:has-text('Godta')",
+        "button:has-text('Accept')",
+        "button:has-text('OK')",
+        "[id*='cookie'] button",
+        "[class*='cookie'] button",
+        ".cc-btn",
+    ]:
+        try:
+            btn = await page.wait_for_selector(sel, timeout=3000)
+            if btn:
+                await btn.click()
+                print(f"[{ts()}] Cookie-popup lukket: {sel}")
+                await page.wait_for_timeout(500)
+                return
+        except PlaywrightTimeout:
+            continue
+
+
 async def book_time(page, date: str, preferred_times: list) -> bool:
     """
     Hovedflyt: naviger, velg tid, velg første ledige bane,
@@ -76,6 +99,13 @@ async def book_time(page, date: str, preferred_times: list) -> bool:
     print(f"[{ts()}] Navigerer til {url}")
     await page.goto(url, wait_until="domcontentloaded")
     await page.wait_for_timeout(2000)
+
+    # Lukk cookie-popup
+    await dismiss_cookies(page)
+
+    # Scroll ned til "Ledige tider"-seksjonen
+    await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)")
+    await page.wait_for_timeout(1000)
 
     for preferred_time in preferred_times:
         print(f"[{ts()}] Prover tid: {preferred_time}")
@@ -89,9 +119,13 @@ async def book_time(page, date: str, preferred_times: list) -> bool:
             f"button:has-text('{preferred_time}')",
             f"a:has-text('{preferred_time}')",
             f"[data-time='{preferred_time}']",
-            f"button:has-text('{hour}')",        # fallback: bare timen
+            f"[data-slot-time='{preferred_time}']",
+            f".booking-slot[data-time*='{hour}']",
+            f"button:has-text('{hour}')",
+            f"a:has-text('{hour}'):not([href*='login'])",
             f".time-slot:has-text('{hour}')",
             f"td:has-text('{hour}') a",
+            f"div:has-text('{preferred_time}') >> nth=0",
         ]
         for sel in candidates:
             try:
