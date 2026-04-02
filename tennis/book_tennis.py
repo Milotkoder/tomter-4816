@@ -118,29 +118,23 @@ async def book_time(page, date: str, preferred_times: list) -> bool:
         print(f"[{ts()}]   Timestamp: {target_ms}")
 
         # Finn booking-lenke direkte via timestamp i href
-        clicked = False
-        result = await page.evaluate(f"""() => {{
-            const links = Array.from(document.querySelectorAll('a[href*="/bookingPayment/confirm"]'));
-            const match = links.find(a => a.href.includes('start={target_ms}'));
-            if (match) {{
-                match.click();
-                return match.href;
-            }}
-            // Logg alle tilgjengelige start-tider for debugging
-            const starts = links.map(a => {{
-                const m = a.href.match(/start=(\\d+)/);
-                return m ? m[1] : null;
-            }}).filter(Boolean);
-            return 'INGEN_MATCH. Tilgjengelige: ' + [...new Set(starts)].join(', ');
-        }}""")
-
-        if result and not result.startswith("INGEN_MATCH"):
-            clicked = True
-            print(f"[{ts()}]   Klikket booking-lenke: {result[:120]}")
-        else:
-            print(f"[{ts()}]   {result}")
+        sel = f'a[href*="/bookingPayment/confirm"][href*="start={target_ms}"]'
+        try:
+            link_el = await page.wait_for_selector(sel, timeout=5000)
+        except PlaywrightTimeout:
+            # Logg tilgjengelige tider for debugging
+            available = await page.evaluate("""() => {
+                return Array.from(document.querySelectorAll('a[href*="/bookingPayment/confirm"]'))
+                    .map(a => { const m = a.href.match(/start=(\\d+)/); return m ? m[1] : null; })
+                    .filter(Boolean);
+            }""")
+            print(f"[{ts()}]   Fant ikke slot for {preferred_time}. Tilgjengelige timestamps: {available[:6]}")
             await page.screenshot(path=f"debug_no_time_{preferred_time.replace(':', '')}.png", full_page=True)
             continue
+
+        href = await link_el.get_attribute("href")
+        print(f"[{ts()}]   Klikket booking-lenke: {href[:100]}")
+        await link_el.click()  # Playwright native klikk trigger jQuery onclick
 
         await page.wait_for_timeout(2000)
 
