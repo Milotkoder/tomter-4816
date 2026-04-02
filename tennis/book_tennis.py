@@ -78,9 +78,9 @@ async def book_time(page, date: str, preferred_times: list) -> bool:
     await page.wait_for_timeout(2000)
 
     for preferred_time in preferred_times:
-        print(f"[{ts()}] ── Prøver tid: {preferred_time}")
+        print(f"[{ts()}] Prover tid: {preferred_time}")
 
-        # ── Steg 1: Klikk tidsknapp ─────────────────────────────────────
+        # -- Steg 1: Klikk tidsknapp ------------------------------------─
         # Knappene vises som "20 00" / "21 00" på siden
         hour = preferred_time.split(":")[0]   # "20"
         clicked = False
@@ -111,7 +111,7 @@ async def book_time(page, date: str, preferred_times: list) -> bool:
 
         await page.wait_for_timeout(1500)
 
-        # ── Steg 2: Klikk BOOK på første ledige bane ────────────────────
+        # -- Steg 2: Klikk BOOK på første ledige bane --------------------
         book_btn = None
         for sel in [
             "button:has-text('BOOK')",
@@ -135,7 +135,7 @@ async def book_time(page, date: str, preferred_times: list) -> bool:
         await book_btn.click()
         await page.wait_for_timeout(1500)
 
-        # ── Steg 3: Klikk NESTE i modal ─────────────────────────────────
+        # -- Steg 3: Klikk NESTE i modal --------------------------------─
         neste_btn = None
         for sel in [
             "button:has-text('NESTE')",
@@ -161,7 +161,7 @@ async def book_time(page, date: str, preferred_times: list) -> bool:
 
         await neste_btn.click()
 
-        # ── Steg 4: Vent på checkout-siden ──────────────────────────────
+        # -- Steg 4: Vent på checkout-siden ------------------------------
         try:
             await page.wait_for_url(
                 lambda url: "checkout" in url or "pay" in url,
@@ -173,7 +173,7 @@ async def book_time(page, date: str, preferred_times: list) -> bool:
 
         await page.wait_for_timeout(1500)
 
-        # ── Steg 5: Klikk "Bekreft bestilling" ──────────────────────────
+        # -- Steg 5: Klikk "Bekreft bestilling" --------------------------
         bekreft_btn = None
         for sel in [
             "button:has-text('Bekreft bestilling')",
@@ -199,7 +199,7 @@ async def book_time(page, date: str, preferred_times: list) -> bool:
         await bekreft_btn.click()
         await page.wait_for_timeout(2000)
 
-        # ── Steg 6: Sjekk bekreftelse ───────────────────────────────────
+        # -- Steg 6: Sjekk bekreftelse ----------------------------------─
         content     = await page.content()
         current_url = page.url
 
