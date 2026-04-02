@@ -111,23 +111,31 @@ async def book_time(page, date: str, preferred_times: list) -> bool:
         target_ms = int(local_dt.timestamp() * 1000)
         print(f"[{ts()}]   Timestamp: {target_ms}")
 
-        # Vent til slots er lastet via AJAX
-        sel_link = f'a[href*="/bookingPayment/confirm"][href*="start={target_ms}"]'
-        try:
-            link_el = await page.wait_for_selector(sel_link, timeout=15000)
-        except PlaywrightTimeout:
-            available = await page.evaluate("""() => {
-                return Array.from(document.querySelectorAll('a[href*="/bookingPayment/confirm"]'))
-                    .map(a => { const m = a.href.match(/start=(\\d+)/); return m ? m[1] : null; })
-                    .filter(Boolean);
-            }""")
-            print(f"[{ts()}]   Fant ikke slot for {preferred_time}. Tilgjengelige timestamps: {available[:6]}")
+        # Klikk slot via JS evaluate (elementet kan være utenfor viewport)
+        result = await page.evaluate(f"""() => {{
+            const links = Array.from(document.querySelectorAll('a[href*="/bookingPayment/confirm"]'));
+            const match = links.find(a => {{
+                const m = a.href.match(/[?&]start=(\\d+)/);
+                return m && m[1] === '{target_ms}';
+            }});
+            if (match) {{
+                const href = match.href;
+                match.dispatchEvent(new MouseEvent('click', {{bubbles: true, cancelable: true}}));
+                return href;
+            }}
+            const available = links.map(a => {{
+                const m = a.href.match(/start=(\\d+)/);
+                return m ? m[1] : null;
+            }}).filter(Boolean);
+            return 'INGEN_MATCH. Tilgjengelige: ' + [...new Set(available)].join(', ');
+        }}""")
+
+        if not result or result.startswith("INGEN_MATCH"):
+            print(f"[{ts()}]   {result}")
             await page.screenshot(path=f"debug_no_time_{preferred_time.replace(':', '')}.png", full_page=True)
             continue
 
-        href = await link_el.get_attribute("href")
-        print(f"[{ts()}]   Klikket slot: {href[:100]}")
-        await link_el.click()
+        print(f"[{ts()}]   Klikket slot: {result[:100]}")
         await page.wait_for_timeout(3000)
         await page.screenshot(path="debug_after_click.png", full_page=True)
 
