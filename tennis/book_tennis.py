@@ -111,22 +111,13 @@ async def book_time(page, date: str, preferred_times: list) -> bool:
         target_ms = int(local_dt.timestamp() * 1000)
         print(f"[{ts()}]   Timestamp: {target_ms}")
 
-        slot_found = await page.evaluate(f"""() => {{
-            const slots = Array.from(document.querySelectorAll('a.slot.free'));
-            const target = slots.find(a => {{
-                const match = a.href.match(/[?&]start=(\\d+)/);
-                return match && match[1] === '{target_ms}';
-            }});
-            if (target) {{
-                target.click();
-                return true;
-            }}
-            return false;
-        }}""")
-
-        if not slot_found:
+        # Vent til slots er lastet via AJAX
+        sel_link = f'a[href*="/bookingPayment/confirm"][href*="start={target_ms}"]'
+        try:
+            link_el = await page.wait_for_selector(sel_link, timeout=15000)
+        except PlaywrightTimeout:
             available = await page.evaluate("""() => {
-                return Array.from(document.querySelectorAll('a.slot'))
+                return Array.from(document.querySelectorAll('a[href*="/bookingPayment/confirm"]'))
                     .map(a => { const m = a.href.match(/start=(\\d+)/); return m ? m[1] : null; })
                     .filter(Boolean);
             }""")
@@ -134,8 +125,11 @@ async def book_time(page, date: str, preferred_times: list) -> bool:
             await page.screenshot(path=f"debug_no_time_{preferred_time.replace(':', '')}.png", full_page=True)
             continue
 
-        print(f"[{ts()}]   Klikket slot for {preferred_time}")
-        await page.wait_for_timeout(2000)
+        href = await link_el.get_attribute("href")
+        print(f"[{ts()}]   Klikket slot: {href[:100]}")
+        await link_el.click()
+        await page.wait_for_timeout(3000)
+        await page.screenshot(path="debug_after_click.png", full_page=True)
 
         neste_btn = None
         for sel in [
