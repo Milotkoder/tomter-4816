@@ -12,12 +12,11 @@ on:
         required: true
         default: '19:00 20:00'
       midnight:
-        description: 'Vent til midnatt før booking (ja/nei)'
+        description: 'Vent til midnatt før booking'
         type: boolean
-        default: true
+        default: false
 
   # Automatisk: kjører kl 23:55 Oslo-tid (= 21:55 UTC sommer / 22:55 UTC vinter)
-  # Leser neste booking fra tennis/next_booking.json
   schedule:
     - cron: '55 21 * * *'   # CEST (sommer, UTC+2): 23:55
     - cron: '55 22 * * *'   # CET  (vinter, UTC+1): 23:55
@@ -65,7 +64,7 @@ jobs:
 
           ARGS="--date $DATE --times $TIMES --headless"
           if [ "$MIDNIGHT" = "true" ]; then
-            ARGS="$ARGS --midnight"
+            ARGS="$ARGS --midnight --max-wait 10"
           fi
 
           echo "Kjører: python book_tennis.py $ARGS"
@@ -86,7 +85,6 @@ jobs:
             echo "Funnet booking: $DATE kl $TIMES (aktiv: $ACTIVE)"
           else
             echo "active=False" >> $GITHUB_OUTPUT
-            echo "Ingen next_booking.json funnet, hopper over."
           fi
 
       - name: Book (automatisk/scheduled)
@@ -100,20 +98,20 @@ jobs:
           DATE="${{ steps.read_config.outputs.date }}"
           TIMES="${{ steps.read_config.outputs.times }}"
           echo "Automatisk booking: $DATE kl $TIMES"
-          python book_tennis.py --date "$DATE" --times $TIMES --midnight --headless
+          python book_tennis.py --date "$DATE" --times $TIMES --midnight --max-wait 10 --headless
 
-      - name: Deaktiver booking etter vellykket kjøring
+      - name: Deaktiver booking etter kjøring
         if: github.event_name == 'schedule' && steps.read_config.outputs.active == 'True'
         run: |
           python3 -c "
-          import json
-          with open('tennis/next_booking.json') as f:
-              d = json.load(f)
-          d['active'] = False
-          with open('tennis/next_booking.json', 'w') as f:
-              json.dump(d, f, indent=2)
-          print('Booking deaktivert i next_booking.json')
-          "
+import json
+with open('tennis/next_booking.json') as f:
+    d = json.load(f)
+d['active'] = False
+with open('tennis/next_booking.json', 'w') as f:
+    json.dump(d, f, indent=2)
+print('Booking deaktivert')
+"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
           git add tennis/next_booking.json
