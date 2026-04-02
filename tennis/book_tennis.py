@@ -102,43 +102,45 @@ async def book_time(page, date: str, preferred_times: list) -> bool:
 
     # Lukk cookie-popup
     await dismiss_cookies(page)
-
-    # Scroll ned til "Ledige tider"-seksjonen
-    await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)")
     await page.wait_for_timeout(1000)
+
+    # Dump HTML for debugging
+    html = await page.content()
+    with open("debug_page.html", "w", encoding="utf-8") as f:
+        f.write(html)
+    print(f"[{ts()}] HTML lagret: debug_page.html ({len(html)} tegn)")
+    await page.screenshot(path="debug_page.png", full_page=True)
 
     for preferred_time in preferred_times:
         print(f"[{ts()}] Prover tid: {preferred_time}")
 
-        # -- Steg 1: Klikk tidsknapp ------------------------------------─
-        # Knappene vises som "20 00" / "21 00" på siden
         hour = preferred_time.split(":")[0]   # "20"
+
+        # Finn alle klikkbare elementer som inneholder timen, unntatt navigasjonslenker
         clicked = False
+        time_el = await page.evaluate(f"""() => {{
+            const all = Array.from(document.querySelectorAll('a, button, div[onclick], span[onclick]'));
+            const matches = all.filter(el => {{
+                const text = el.innerText || el.textContent || '';
+                const href = el.href || '';
+                // Må inneholde timen, ikke være en navigasjonslenke
+                return text.trim().startsWith('{hour}') &&
+                       !href.includes('find') &&
+                       !href.includes('search') &&
+                       !href.includes('facilities?') &&
+                       el.offsetParent !== null;
+            }});
+            if (matches.length > 0) {{
+                matches[0].click();
+                return matches[0].outerHTML.substring(0, 200);
+            }}
+            return null;
+        }}""")
 
-        candidates = [
-            f"button:has-text('{preferred_time}')",
-            f"a:has-text('{preferred_time}')",
-            f"[data-time='{preferred_time}']",
-            f"[data-slot-time='{preferred_time}']",
-            f".booking-slot[data-time*='{hour}']",
-            f"button:has-text('{hour}')",
-            f"a:has-text('{hour}'):not([href*='login'])",
-            f".time-slot:has-text('{hour}')",
-            f"td:has-text('{hour}') a",
-            f"div:has-text('{preferred_time}') >> nth=0",
-        ]
-        for sel in candidates:
-            try:
-                el = await page.wait_for_selector(sel, timeout=2000)
-                if el:
-                    await el.click()
-                    clicked = True
-                    print(f"[{ts()}]   Klikket tidsknapp med selector: {sel}")
-                    break
-            except PlaywrightTimeout:
-                continue
-
-        if not clicked:
+        if time_el:
+            clicked = True
+            print(f"[{ts()}]   Klikket tidsknapp via JS: {time_el[:100]}")
+        else:
             await page.screenshot(path=f"debug_no_time_{preferred_time.replace(':', '')}.png", full_page=True)
             print(f"[{ts()}]   Fant ikke tidsknapp for {preferred_time} – prøver neste tid")
             continue
