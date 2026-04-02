@@ -3,5 +3,5 @@
   "date": "2026-04-03",
   "times": ["19:00", "20:00"],
   "midnight": false,
-  "note": "Legg til wait_for_selector for React-rendered login. Sett active=true for å trigge booking."
+  "note": "Legg til HTML-dump i logg for debugging. Sett active=true for å trigge booking."
 }
