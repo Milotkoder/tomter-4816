@@ -27,6 +27,11 @@
   .kat-middels { background:#ffe0b2 !important; }
   .kat-liten   { background:#ffcdd2 !important; }
 
+  .kart-legend { display:flex; flex-wrap:wrap; gap:12px 20px; margin-top:12px;
+                 font-size:.82rem; color:#555; }
+  .legend-dot { display:inline-block; width:11px; height:11px; border-radius:50%;
+                margin-right:5px; vertical-align:middle; }
+
   /* Mobilvennlig: skjerm <= 767px */
   @media (max-width: 767px) {
     .hero { padding: 16px 16px 14px; margin-bottom: 16px; }
@@ -119,6 +124,12 @@
   <div class="card-section mb-4">
     <h5>Interaktivt kart</h5>
     <iframe id="kartet" src="4816_Kolbjornsvik_Kart_Dashboard.html" title="Tomtekart 4816"></iframe>
+    <div class="kart-legend">
+      <span><span class="legend-dot" style="background:#27ae60"></span>Stor (&gt;1500 m²)</span>
+      <span><span class="legend-dot" style="background:#f39c12"></span>Middels (500–1500 m²)</span>
+      <span><span class="legend-dot" style="background:#e74c3c"></span>Liten (&lt;500 m²)</span>
+      <span><span class="legend-dot" style="background:#888"></span>Ukjent</span>
+    </div>
   </div>
 
   <!-- Tabell -->
