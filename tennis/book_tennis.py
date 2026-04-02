@@ -91,23 +91,17 @@ async def dismiss_cookies(page):
 
 
 async def book_time(page, date: str, preferred_times: list) -> bool:
-    """
-    Hovedflyt: naviger, velg tid, velg første ledige bane,
-    bekreft modal, bekreft checkout.
-    """
     url = f"{FACILITY_URL}?date={date}&sport=1"
     print(f"[{ts()}] Navigerer til {url}")
     await page.goto(url, wait_until="domcontentloaded")
     await page.wait_for_timeout(2000)
 
-    # Lukk cookie-popup
     await dismiss_cookies(page)
     await page.wait_for_timeout(2000)
 
     for preferred_time in preferred_times:
         print(f"[{ts()}] Prover tid: {preferred_time}")
 
-        # Konverter ønsket tid til Unix-timestamp (ms) i Oslo-tidssone
         import pytz
         from datetime import datetime as dt_cls
         oslo = pytz.timezone("Europe/Oslo")
@@ -117,14 +111,22 @@ async def book_time(page, date: str, preferred_times: list) -> bool:
         target_ms = int(local_dt.timestamp() * 1000)
         print(f"[{ts()}]   Timestamp: {target_ms}")
 
-        # Finn booking-lenke direkte via timestamp i href
-        sel = f'a[href*="/bookingPayment/confirm"][href*="start={target_ms}"]'
-        try:
-            link_el = await page.wait_for_selector(sel, timeout=5000)
-        except PlaywrightTimeout:
-            # Logg tilgjengelige tider for debugging
+        slot_found = await page.evaluate(f"""() => {{
+            const slots = Array.from(document.querySelectorAll('a.slot.free'));
+            const target = slots.find(a => {{
+                const match = a.href.match(/[?&]start=(\\d+)/);
+                return match && match[1] === '{target_ms}';
+            }});
+            if (target) {{
+                target.click();
+                return true;
+            }}
+            return false;
+        }}""")
+
+        if not slot_found:
             available = await page.evaluate("""() => {
-                return Array.from(document.querySelectorAll('a[href*="/bookingPayment/confirm"]'))
+                return Array.from(document.querySelectorAll('a.slot'))
                     .map(a => { const m = a.href.match(/start=(\\d+)/); return m ? m[1] : null; })
                     .filter(Boolean);
             }""")
@@ -132,13 +134,9 @@ async def book_time(page, date: str, preferred_times: list) -> bool:
             await page.screenshot(path=f"debug_no_time_{preferred_time.replace(':', '')}.png", full_page=True)
             continue
 
-        href = await link_el.get_attribute("href")
-        print(f"[{ts()}]   Klikket booking-lenke: {href[:100]}")
-        await link_el.click()  # Playwright native klikk trigger jQuery onclick
-
+        print(f"[{ts()}]   Klikket slot for {preferred_time}")
         await page.wait_for_timeout(2000)
 
-        # -- Steg 3: Klikk NESTE i modal --------------------------------─
         neste_btn = None
         for sel in [
             "button:has-text('NESTE')",
@@ -164,7 +162,6 @@ async def book_time(page, date: str, preferred_times: list) -> bool:
 
         await neste_btn.click()
 
-        # -- Steg 4: Vent på checkout-siden ------------------------------
         try:
             await page.wait_for_url(
                 lambda url: "checkout" in url or "pay" in url,
@@ -176,7 +173,6 @@ async def book_time(page, date: str, preferred_times: list) -> bool:
 
         await page.wait_for_timeout(1500)
 
-        # -- Steg 5: Klikk "Bekreft bestilling" --------------------------
         bekreft_btn = None
         for sel in [
             "button:has-text('Bekreft bestilling')",
@@ -202,11 +198,10 @@ async def book_time(page, date: str, preferred_times: list) -> bool:
         await bekreft_btn.click()
         await page.wait_for_timeout(2000)
 
-        # -- Steg 6: Sjekk bekreftelse ----------------------------------─
         content     = await page.content()
         current_url = page.url
 
-        if any(x in content for x in ["Takk", "fullført", "Tack", "bekräftad", "confirmed"]):
+        if any(x in content for x in ["Takk", "fullfort", "Tack", "bekraftad", "confirmed"]):
             print(f"[{ts()}] BOOKING VELLYKKET! Tid: {preferred_time}, dato: {date}")
             return True
 
@@ -215,7 +210,7 @@ async def book_time(page, date: str, preferred_times: list) -> bool:
             return True
 
         await page.screenshot(path=f"debug_uklar_{preferred_time.replace(':', '')}.png", full_page=True)
-        print(f"[{ts()}]   Booking-status uklar. URL: {current_url} – prøver neste tid")
+        print(f"[{ts()}]   Booking-status uklar. URL: {current_url} – prover neste tid")
 
     print(f"[{ts()}] Ingen av tidene ble booket: {', '.join(preferred_times)}")
     return False
@@ -231,7 +226,7 @@ def wait_for_midnight(pre_seconds: float = 0.3, max_wait_minutes: int = 10):
         print(f"[{ts()}] Allerede passert midnatt, booker umiddelbart.")
         return
     if wait_secs > max_wait_minutes * 60:
-        print(f"[{ts()}] FEIL: {wait_secs/60:.1f} min til midnatt — over grensen på {max_wait_minutes} min.")
+        print(f"[{ts()}] FEIL: {wait_secs/60:.1f} min til midnatt — over grensen pa {max_wait_minutes} min.")
         sys.exit(1)
 
     print(f"[{ts()}] Venter til {target.strftime('%H:%M:%S.%f')[:-3]} ({wait_secs:.1f} sek)...")
@@ -261,7 +256,7 @@ async def main():
     print(f"[{ts()}] Modus: {'Midnatt' if args.midnight else 'Umiddelbar'}")
 
     if not MATCHI_EMAIL or not MATCHI_PASSWORD:
-        print(f"[{ts()}] FEIL: MATCHI_EMAIL og MATCHI_PASSWORD må være satt som miljøvariabler.")
+        print(f"[{ts()}] FEIL: MATCHI_EMAIL og MATCHI_PASSWORD ma vare satt som miljøvariabler.")
         sys.exit(1)
 
     if args.midnight:
