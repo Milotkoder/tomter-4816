@@ -1,0 +1,121 @@
+name: Book Tennis Court - Sagene
+
+on:
+  # Manuell trigger: du starter dette fra GitHub når du vil booke
+  workflow_dispatch:
+    inputs:
+      date:
+        description: 'Dato å booke (YYYY-MM-DD), f.eks. 2026-04-05'
+        required: true
+      times:
+        description: 'Ønskede tider i prioritetsrekkefølge, f.eks. "19:00 20:00"'
+        required: true
+        default: '19:00 20:00'
+      midnight:
+        description: 'Vent til midnatt før booking (ja/nei)'
+        type: boolean
+        default: true
+
+  # Automatisk: kjører kl 23:55 Oslo-tid (= 21:55 UTC sommer / 22:55 UTC vinter)
+  # Leser neste booking fra tennis/next_booking.json
+  schedule:
+    - cron: '55 21 * * *'   # CEST (sommer, UTC+2): 23:55
+    - cron: '55 22 * * *'   # CET  (vinter, UTC+1): 23:55
+
+jobs:
+  book:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-playwright
+
+      - name: Install Python dependencies
+        run: |
+          cd tennis
+          pip install -r requirements.txt
+
+      - name: Install Playwright browser
+        run: playwright install chromium --with-deps
+
+      # --- Manuell kjøring ---
+      - name: Book (manuell)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          MATCHI_EMAIL: ${{ secrets.MATCHI_EMAIL }}
+          MATCHI_PASSWORD: ${{ secrets.MATCHI_PASSWORD }}
+          TZ: Europe/Oslo
+        run: |
+          cd tennis
+          TIMES="${{ github.event.inputs.times }}"
+          DATE="${{ github.event.inputs.date }}"
+          MIDNIGHT="${{ github.event.inputs.midnight }}"
+
+          ARGS="--date $DATE --times $TIMES --headless"
+          if [ "$MIDNIGHT" = "true" ]; then
+            ARGS="$ARGS --midnight"
+          fi
+
+          echo "Kjører: python book_tennis.py $ARGS"
+          python book_tennis.py $ARGS
+
+      # --- Automatisk/scheduled kjøring ---
+      - name: Les next_booking.json
+        if: github.event_name == 'schedule'
+        id: read_config
+        run: |
+          if [ -f tennis/next_booking.json ]; then
+            DATE=$(python3 -c "import json; d=json.load(open('tennis/next_booking.json')); print(d.get('date',''))")
+            TIMES=$(python3 -c "import json; d=json.load(open('tennis/next_booking.json')); print(' '.join(d.get('times',[])))")
+            ACTIVE=$(python3 -c "import json; d=json.load(open('tennis/next_booking.json')); print(d.get('active', False))")
+            echo "date=$DATE" >> $GITHUB_OUTPUT
+            echo "times=$TIMES" >> $GITHUB_OUTPUT
+            echo "active=$ACTIVE" >> $GITHUB_OUTPUT
+            echo "Funnet booking: $DATE kl $TIMES (aktiv: $ACTIVE)"
+          else
+            echo "active=False" >> $GITHUB_OUTPUT
+            echo "Ingen next_booking.json funnet, hopper over."
+          fi
+
+      - name: Book (automatisk/scheduled)
+        if: github.event_name == 'schedule' && steps.read_config.outputs.active == 'True'
+        env:
+          MATCHI_EMAIL: ${{ secrets.MATCHI_EMAIL }}
+          MATCHI_PASSWORD: ${{ secrets.MATCHI_PASSWORD }}
+          TZ: Europe/Oslo
+        run: |
+          cd tennis
+          DATE="${{ steps.read_config.outputs.date }}"
+          TIMES="${{ steps.read_config.outputs.times }}"
+          echo "Automatisk booking: $DATE kl $TIMES"
+          python book_tennis.py --date "$DATE" --times $TIMES --midnight --headless
+
+      - name: Deaktiver booking etter vellykket kjøring
+        if: github.event_name == 'schedule' && steps.read_config.outputs.active == 'True'
+        run: |
+          python3 -c "
+          import json
+          with open('tennis/next_booking.json') as f:
+              d = json.load(f)
+          d['active'] = False
+          with open('tennis/next_booking.json', 'w') as f:
+              json.dump(d, f, indent=2)
+          print('Booking deaktivert i next_booking.json')
+          "
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add tennis/next_booking.json
+          git commit -m "Deaktiver booking etter kjøring $(date +'%Y-%m-%d')"
+          git push
