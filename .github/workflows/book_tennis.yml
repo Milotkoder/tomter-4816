@@ -1,14 +1,14 @@
 name: Book Tennis Court - Sagene
 
 on:
-  # Manuell trigger: du starter dette fra GitHub når du vil booke
+  # Manuell trigger fra GitHub UI
   workflow_dispatch:
     inputs:
       date:
-        description: 'Dato å booke (YYYY-MM-DD), f.eks. 2026-04-05'
+        description: 'Dato å booke (YYYY-MM-DD)'
         required: true
       times:
-        description: 'Ønskede tider i prioritetsrekkefølge, f.eks. "19:00 20:00"'
+        description: 'Ønskede tider, f.eks. "19:00 20:00"'
         required: true
         default: '19:00 20:00'
       midnight:
@@ -16,10 +16,15 @@ on:
         type: boolean
         default: false
 
-  # Automatisk: kjører kl 23:55 Oslo-tid (= 21:55 UTC sommer / 22:55 UTC vinter)
+  # Automatisk trigger: kjør når next_booking.json oppdateres med active=true
+  push:
+    branches: [main]
+    paths: ['tennis/next_booking.json']
+
+  # Planlagt: kl 23:55 Oslo-tid
   schedule:
-    - cron: '55 21 * * *'   # CEST (sommer, UTC+2): 23:55
-    - cron: '55 22 * * *'   # CET  (vinter, UTC+1): 23:55
+    - cron: '55 21 * * *'   # CEST (sommer, UTC+2)
+    - cron: '55 22 * * *'   # CET  (vinter, UTC+1)
 
 jobs:
   book:
@@ -49,7 +54,7 @@ jobs:
       - name: Install Playwright browser
         run: playwright install chromium --with-deps
 
-      # --- Manuell kjøring ---
+      # --- Manuell kjøring (workflow_dispatch) ---
       - name: Book (manuell)
         if: github.event_name == 'workflow_dispatch'
         env:
@@ -58,37 +63,30 @@ jobs:
           TZ: Europe/Oslo
         run: |
           cd tennis
-          TIMES="${{ github.event.inputs.times }}"
-          DATE="${{ github.event.inputs.date }}"
-          MIDNIGHT="${{ github.event.inputs.midnight }}"
-
-          ARGS="--date $DATE --times $TIMES --headless"
-          if [ "$MIDNIGHT" = "true" ]; then
+          ARGS="--date ${{ github.event.inputs.date }} --times ${{ github.event.inputs.times }} --headless"
+          if [ "${{ github.event.inputs.midnight }}" = "true" ]; then
             ARGS="$ARGS --midnight --max-wait 10"
           fi
-
           echo "Kjører: python book_tennis.py $ARGS"
           python book_tennis.py $ARGS
 
-      # --- Automatisk/scheduled kjøring ---
+      # --- Push-trigger: kjør når next_booking.json er oppdatert ---
       - name: Les next_booking.json
-        if: github.event_name == 'schedule'
+        if: github.event_name == 'push' || github.event_name == 'schedule'
         id: read_config
         run: |
-          if [ -f tennis/next_booking.json ]; then
-            DATE=$(python3 -c "import json; d=json.load(open('tennis/next_booking.json')); print(d.get('date',''))")
-            TIMES=$(python3 -c "import json; d=json.load(open('tennis/next_booking.json')); print(' '.join(d.get('times',[])))")
-            ACTIVE=$(python3 -c "import json; d=json.load(open('tennis/next_booking.json')); print(d.get('active', False))")
-            echo "date=$DATE" >> $GITHUB_OUTPUT
-            echo "times=$TIMES" >> $GITHUB_OUTPUT
-            echo "active=$ACTIVE" >> $GITHUB_OUTPUT
-            echo "Funnet booking: $DATE kl $TIMES (aktiv: $ACTIVE)"
-          else
-            echo "active=False" >> $GITHUB_OUTPUT
-          fi
+          DATE=$(python3 -c "import json; d=json.load(open('tennis/next_booking.json')); print(d.get('date',''))")
+          TIMES=$(python3 -c "import json; d=json.load(open('tennis/next_booking.json')); print(' '.join(d.get('times',[])))")
+          ACTIVE=$(python3 -c "import json; d=json.load(open('tennis/next_booking.json')); print(d.get('active', False))")
+          MIDNIGHT=$(python3 -c "import json; d=json.load(open('tennis/next_booking.json')); print(d.get('midnight', False))")
+          echo "date=$DATE" >> $GITHUB_OUTPUT
+          echo "times=$TIMES" >> $GITHUB_OUTPUT
+          echo "active=$ACTIVE" >> $GITHUB_OUTPUT
+          echo "midnight=$MIDNIGHT" >> $GITHUB_OUTPUT
+          echo "Booking: $DATE kl $TIMES (aktiv: $ACTIVE, midnatt: $MIDNIGHT)"
 
-      - name: Book (automatisk/scheduled)
-        if: github.event_name == 'schedule' && steps.read_config.outputs.active == 'True'
+      - name: Book (push/scheduled)
+        if: (github.event_name == 'push' || github.event_name == 'schedule') && steps.read_config.outputs.active == 'True'
         env:
           MATCHI_EMAIL: ${{ secrets.MATCHI_EMAIL }}
           MATCHI_PASSWORD: ${{ secrets.MATCHI_PASSWORD }}
@@ -97,11 +95,16 @@ jobs:
           cd tennis
           DATE="${{ steps.read_config.outputs.date }}"
           TIMES="${{ steps.read_config.outputs.times }}"
-          echo "Automatisk booking: $DATE kl $TIMES"
-          python book_tennis.py --date "$DATE" --times $TIMES --midnight --max-wait 10 --headless
+          MIDNIGHT="${{ steps.read_config.outputs.midnight }}"
+          ARGS="--date $DATE --times $TIMES --headless"
+          if [ "$MIDNIGHT" = "True" ]; then
+            ARGS="$ARGS --midnight --max-wait 10"
+          fi
+          echo "Kjører: python book_tennis.py $ARGS"
+          python book_tennis.py $ARGS
 
       - name: Deaktiver booking etter kjøring
-        if: github.event_name == 'schedule' && steps.read_config.outputs.active == 'True'
+        if: (github.event_name == 'push' || github.event_name == 'schedule') && steps.read_config.outputs.active == 'True'
         run: |
           python3 -c "
 import json
@@ -110,7 +113,6 @@ with open('tennis/next_booking.json') as f:
 d['active'] = False
 with open('tennis/next_booking.json', 'w') as f:
     json.dump(d, f, indent=2)
-print('Booking deaktivert')
 "
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
