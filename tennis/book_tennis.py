@@ -137,32 +137,40 @@ async def book_time(page, date: str, preferred_times: list) -> bool:
 
         print(f"[{ts()}]   Klikket slot: {result[:100]}")
         await page.wait_for_timeout(3000)
-        await page.screenshot(path="debug_after_click.png", full_page=True)
 
-        neste_btn = None
-        for sel in [
-            "button:has-text('NESTE')",
-            "button:has-text('Neste')",
-            "button:has-text('Next')",
-            "button:has-text('Nästa')",
-            ".modal-footer button.btn-primary",
-            ".modal button.btn-primary",
-            "button.btn-primary",
-        ]:
-            try:
-                neste_btn = await page.wait_for_selector(sel, timeout=5000)
-                if neste_btn:
-                    print(f"[{ts()}]   Fant NESTE-knapp med selector: {sel}")
-                    break
-            except PlaywrightTimeout:
-                continue
+        # Lukk cookie-popup igjen hvis den blokkerer modal
+        await dismiss_cookies(page)
+        await page.wait_for_timeout(500)
 
-        if not neste_btn:
+        # Klikk NESTE via JS for å unngå at cookie-popup blokkerer
+        neste_clicked = await page.evaluate("""() => {
+            const buttons = Array.from(document.querySelectorAll('button, a.btn'));
+            const neste = buttons.find(b => {
+                const t = (b.innerText || b.textContent || '').trim().toUpperCase();
+                return t === 'NESTE' || t === 'NEXT' || t === 'NASTA' || t === 'NÄSTA';
+            });
+            if (neste) {
+                neste.click();
+                return neste.innerText.trim();
+            }
+            // Fallback: btn-primary i modal
+            const modal = document.querySelector('.modal.in, .modal[style*="display: block"], .modal[style*="display:block"]');
+            if (modal) {
+                const primary = modal.querySelector('button.btn-primary, a.btn-primary');
+                if (primary) {
+                    primary.click();
+                    return 'modal-primary: ' + primary.innerText.trim();
+                }
+            }
+            return null;
+        }""")
+
+        if not neste_clicked:
             await page.screenshot(path=f"debug_no_neste_{preferred_time.replace(':', '')}.png", full_page=True)
             print(f"[{ts()}]   Fant ikke NESTE-knapp i modal")
             continue
 
-        await neste_btn.click()
+        print(f"[{ts()}]   Klikket NESTE: {neste_clicked}")
 
         try:
             await page.wait_for_url(
