@@ -91,6 +91,14 @@ jobs:
           echo "Kjører: python book_tennis.py $ARGS"
           python book_tennis.py $ARGS
 
+      - name: Last opp debug-skjermbilder
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-screenshots
+          path: tennis/debug_*.png
+          if-no-files-found: ignore
+
       - name: Deaktiver booking etter kjøring
         if: (github.event_name == 'push' || github.event_name == 'schedule') && steps.cfg.outputs.active == 'True'
         run: |

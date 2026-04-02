@@ -30,6 +30,15 @@ LOGIN_URL = "https://www.matchi.se/login/auth"
 async def login(page, email: str, password: str) -> bool:
     print(f"[{ts()}] Logger inn som {email}...")
     await page.goto(LOGIN_URL, wait_until="domcontentloaded")
+    print(f"[{ts()}] Login-side lastet. URL: {page.url}, Tittel: {await page.title()}")
+
+    username_field = await page.query_selector('input[name="j_username"]')
+    if not username_field:
+        print(f"[{ts()}] FEIL: Fant ikke input[name='j_username'] — siden ser kanskje annerledes ut")
+        await page.screenshot(path="debug_login_page.png", full_page=True)
+        print(f"[{ts()}] Skjermbilde lagret: debug_login_page.png")
+        return False
+
     await page.fill('input[name="j_username"]', email)
     await page.fill('input[name="j_password"]', password)
     await page.click('button[type="submit"], input[type="submit"]')
@@ -38,12 +47,14 @@ async def login(page, email: str, password: str) -> bool:
         print(f"[{ts()}] Innlogget OK")
         return True
     except PlaywrightTimeout:
+        await page.screenshot(path="debug_login_failed.png", full_page=True)
+        print(f"[{ts()}] Skjermbilde lagret: debug_login_failed.png")
         error = await page.query_selector(".alert-danger, .error, #loginError")
         if error:
             msg = await error.inner_text()
             print(f"[{ts()}] Innlogging feilet: {msg.strip()}")
         else:
-            print(f"[{ts()}] Innlogging feilet (ukjent feil)")
+            print(f"[{ts()}] Innlogging feilet (ukjent feil). URL etter klikk: {page.url}")
         return False
 
 
