@@ -102,74 +102,47 @@ async def book_time(page, date: str, preferred_times: list) -> bool:
 
     # Lukk cookie-popup
     await dismiss_cookies(page)
-    await page.wait_for_timeout(1000)
-
-    # Dump HTML for debugging
-    html = await page.content()
-    with open("debug_page.html", "w", encoding="utf-8") as f:
-        f.write(html)
-    print(f"[{ts()}] HTML lagret: debug_page.html ({len(html)} tegn)")
-    await page.screenshot(path="debug_page.png", full_page=True)
+    await page.wait_for_timeout(2000)
 
     for preferred_time in preferred_times:
         print(f"[{ts()}] Prover tid: {preferred_time}")
 
-        hour = preferred_time.split(":")[0]   # "20"
+        # Konverter ønsket tid til Unix-timestamp (ms) i Oslo-tidssone
+        import pytz
+        from datetime import datetime as dt_cls
+        oslo = pytz.timezone("Europe/Oslo")
+        h, m = map(int, preferred_time.split(":"))
+        y, mo, d = map(int, date.split("-"))
+        local_dt = oslo.localize(dt_cls(y, mo, d, h, m, 0))
+        target_ms = int(local_dt.timestamp() * 1000)
+        print(f"[{ts()}]   Timestamp: {target_ms}")
 
-        # Finn alle klikkbare elementer som inneholder timen, unntatt navigasjonslenker
+        # Finn booking-lenke direkte via timestamp i href
         clicked = False
-        time_el = await page.evaluate(f"""() => {{
-            const all = Array.from(document.querySelectorAll('a, button, div[onclick], span[onclick]'));
-            const matches = all.filter(el => {{
-                const text = el.innerText || el.textContent || '';
-                const href = el.href || '';
-                // Må inneholde timen, ikke være en navigasjonslenke
-                return text.trim().startsWith('{hour}') &&
-                       !href.includes('find') &&
-                       !href.includes('search') &&
-                       !href.includes('facilities?') &&
-                       el.offsetParent !== null;
-            }});
-            if (matches.length > 0) {{
-                matches[0].click();
-                return matches[0].outerHTML.substring(0, 200);
+        result = await page.evaluate(f"""() => {{
+            const links = Array.from(document.querySelectorAll('a[href*="/bookingPayment/confirm"]'));
+            const match = links.find(a => a.href.includes('start={target_ms}'));
+            if (match) {{
+                match.click();
+                return match.href;
             }}
-            return null;
+            // Logg alle tilgjengelige start-tider for debugging
+            const starts = links.map(a => {{
+                const m = a.href.match(/start=(\\d+)/);
+                return m ? m[1] : null;
+            }}).filter(Boolean);
+            return 'INGEN_MATCH. Tilgjengelige: ' + [...new Set(starts)].join(', ');
         }}""")
 
-        if time_el:
+        if result and not result.startswith("INGEN_MATCH"):
             clicked = True
-            print(f"[{ts()}]   Klikket tidsknapp via JS: {time_el[:100]}")
+            print(f"[{ts()}]   Klikket booking-lenke: {result[:120]}")
         else:
+            print(f"[{ts()}]   {result}")
             await page.screenshot(path=f"debug_no_time_{preferred_time.replace(':', '')}.png", full_page=True)
-            print(f"[{ts()}]   Fant ikke tidsknapp for {preferred_time} – prøver neste tid")
             continue
 
-        await page.wait_for_timeout(1500)
-
-        # -- Steg 2: Klikk BOOK på første ledige bane --------------------
-        book_btn = None
-        for sel in [
-            "button:has-text('BOOK')",
-            "a:has-text('BOOK')",
-            "button:has-text('Book')",
-            "a:has-text('Book')",
-            ".btn-success",
-            ".btn-primary:has-text('BOK')",
-        ]:
-            btns = await page.query_selector_all(sel)
-            if btns:
-                book_btn = btns[0]
-                print(f"[{ts()}]   Fant BOOK-knapp med selector: {sel}")
-                break
-
-        if not book_btn:
-            await page.screenshot(path=f"debug_no_book_{preferred_time.replace(':', '')}.png", full_page=True)
-            print(f"[{ts()}]   Ingen ledige baner for {preferred_time} – prøver neste tid")
-            continue
-
-        await book_btn.click()
-        await page.wait_for_timeout(1500)
+        await page.wait_for_timeout(2000)
 
         # -- Steg 3: Klikk NESTE i modal --------------------------------─
         neste_btn = None
