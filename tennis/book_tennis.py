@@ -20,12 +20,16 @@ Bruk:
 import argparse
 import asyncio
 import os
+import re
 import sys
 import time
 from datetime import datetime, timedelta
 
+import requests
 from dotenv import load_dotenv
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
+
+CHECKOUT_API_KEY = "checkout-client_8x_o=G0j`O:4jz*3UAq2"
 
 load_dotenv()
 
@@ -183,55 +187,49 @@ async def book_time(page, date: str, preferred_times: list) -> bool:
 
         print(f"[{ts()}]   Klikket: {neste_clicked}")
 
+        # Steg 5: Vent på checkout.matchi.com URL og hent token
         try:
             await page.wait_for_url(
-                lambda url: "checkout" in url or "pay" in url,
-                timeout=10_000
+                lambda url: "checkout.matchi.com/pay/" in url,
+                timeout=15_000
             )
-            print(f"[{ts()}]   Checkout-side lastet: {page.url}")
         except PlaywrightTimeout:
-            print(f"[{ts()}]   Advarsel: Forventet checkout-URL, men fikk: {page.url}")
-
-        await page.wait_for_timeout(1500)
-
-        bekreft_btn = None
-        for sel in [
-            "button:has-text('Bekreft bestilling')",
-            "button:has-text('Confirm')",
-            "button:has-text('Bekräfta beställning')",
-            "button:has-text('Bekräfta')",
-            "button.btn-primary",
-            "input[type='submit']",
-        ]:
-            try:
-                bekreft_btn = await page.wait_for_selector(sel, timeout=5000)
-                if bekreft_btn:
-                    print(f"[{ts()}]   Fant Bekreft-knapp med selector: {sel}")
-                    break
-            except PlaywrightTimeout:
-                continue
-
-        if not bekreft_btn:
-            await page.screenshot(path=f"debug_no_bekreft_{preferred_time.replace(':', '')}.png", full_page=True)
-            print(f"[{ts()}]   Fant ikke 'Bekreft bestilling'-knapp")
+            current_url = page.url
+            print(f"[{ts()}]   Forventet checkout-URL, men fikk: {current_url}")
+            await page.screenshot(path=f"debug_no_checkout_{preferred_time.replace(':', '')}.png", full_page=True)
             continue
 
-        await bekreft_btn.click()
-        await page.wait_for_timeout(2000)
+        checkout_url = page.url
+        print(f"[{ts()}]   Checkout-URL: {checkout_url}")
 
-        content     = await page.content()
-        current_url = page.url
+        m = re.search(r"checkout\.matchi\.com/pay/([a-f0-9]+)", checkout_url)
+        if not m:
+            print(f"[{ts()}]   Klarte ikke hente checkout-token fra URL")
+            continue
 
-        if any(x in content for x in ["Takk", "fullfort", "Tack", "bekraftad", "confirmed"]):
-            print(f"[{ts()}] BOOKING VELLYKKET! Tid: {preferred_time}, dato: {date}")
-            return True
+        checkout_token = m.group(1)
+        print(f"[{ts()}]   Checkout-token: {checkout_token}")
 
-        if any(x in current_url for x in ["confirm", "success", "thanks", "takk"]):
-            print(f"[{ts()}] BOOKING VELLYKKET! (URL-sjekk) {current_url}")
-            return True
-
-        await page.screenshot(path=f"debug_uklar_{preferred_time.replace(':', '')}.png", full_page=True)
-        print(f"[{ts()}]   Booking-status uklar. URL: {current_url} – prover neste tid")
+        # Steg 6: Bekreft booking via API (omga React-SPA)
+        api_url = f"https://api.matchi.com/checkout/{checkout_token}"
+        headers = {
+            "x-api-key":    CHECKOUT_API_KEY,
+            "content-type": "application/json",
+            "accept":       "application/json",
+            "origin":       "https://checkout.matchi.com",
+            "referer":      "https://checkout.matchi.com/",
+        }
+        try:
+            resp = requests.post(api_url, json={"payment": {"method": "FREE"}}, headers=headers, timeout=15)
+            print(f"[{ts()}]   API-svar {resp.status_code}: {resp.text[:300]}")
+            data = resp.json()
+            if data.get("bookingId"):
+                print(f"[{ts()}] BOOKING VELLYKKET! bookingId={data['bookingId']}, tid: {preferred_time}, dato: {date}")
+                return True
+            else:
+                print(f"[{ts()}]   Uventet API-svar, prover neste tid")
+        except Exception as exc:
+            print(f"[{ts()}]   API-feil: {exc}")
 
     print(f"[{ts()}] Ingen av tidene ble booket: {', '.join(preferred_times)}")
     return False
